@@ -6,9 +6,13 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
 using mf_dev_backend_2025.Models;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authorization;
 
 namespace mf_dev_backend_2025.Controllers
 {
+    [Authorize(Roles ="Admin")]
     public class UsuariosController : Controller
     {
         private readonly AppDbContext _context;
@@ -23,6 +27,80 @@ namespace mf_dev_backend_2025.Controllers
         {
             return View(await _context.Usuarios.ToListAsync());
         }
+
+        // LOGIN: Usuarios
+
+        [AllowAnonymous]
+        public IActionResult AcessDenied() 
+        { 
+            return View();
+        }
+
+        [AllowAnonymous]
+        public IActionResult Login() 
+        {
+            return (View());
+        }
+
+        [HttpPost]
+        [AllowAnonymous]
+        public async Task<IActionResult> Login(Usuario usuario)
+        {
+
+            var dados = await _context.Usuarios.FindAsync(usuario.Id);
+
+            if (dados == null) 
+            {
+                ViewBag.Message = "Usuário e/ou senha inválidos";
+                return View();
+            }
+
+            bool senhaOK = BCrypt.Net.BCrypt.Verify(usuario.Senha,  dados.Senha);
+
+            if (senhaOK)
+            {
+
+                var claims = new List<Claim>
+                {
+                    new Claim(ClaimTypes.Name, dados.Nome),
+                    new Claim(ClaimTypes.NameIdentifier, dados.Id.ToString()),
+                    new Claim(ClaimTypes.Role, dados.Perfil.ToString())
+                };
+
+                var usuarioIndentity = new ClaimsIdentity(claims, "login");
+                ClaimsPrincipal principal = new ClaimsPrincipal(usuarioIndentity);
+
+                var props = new AuthenticationProperties
+                {
+                    AllowRefresh = true,
+                    ExpiresUtc = DateTime.UtcNow.ToLocalTime().AddHours(8),  
+                    IsPersistent = true
+                };
+
+                await HttpContext.SignInAsync(principal, props);
+
+                return RedirectToAction("/");
+
+                // CONFERIR RETORNO
+
+            }
+            else 
+            {
+                ViewBag.Message = "Usuário e/ou senha inválidos";
+            }
+
+
+            return (View());
+        }
+
+        [AllowAnonymous]
+
+        public async Task<IActionResult> Logout() 
+        { 
+            await HttpContext.SignOutAsync();
+            return RedirectToAction("Login", "Usuarios");
+        }
+
 
         // GET: Usuarios/Details/5
         public async Task<IActionResult> Details(int? id)
